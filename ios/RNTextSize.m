@@ -216,6 +216,69 @@ RCT_EXPORT_METHOD(flatHeights:(NSDictionary * _Nullable)options
   resolve(result);
 }
 
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(flatHeightsSync:(NSDictionary * _Nullable)options)
+{
+  // Don't use NSStringArray, we are handling nulls
+  NSArray *const _Nullable texts = [RCTConvert NSArray:options[@"text"]];
+  if (isNull(texts)) {
+    return nil;
+  }
+
+  UIFont *const _Nullable font = [self scaledUIFontFromUserSpecs:options];
+  if (!font) {
+    return nil;
+  }
+
+  const CGFloat optWidth = CGFloatValueFrom(options[@"width"]);
+  const CGFloat maxWidth = isnan(optWidth) || isinf(optWidth) ? CGFLOAT_MAX : optWidth;
+  const CGSize maxSize = CGSizeMake(maxWidth, CGFLOAT_MAX);
+
+  // Create attributes for the font and the optional letter spacing.
+  const CGFloat letterSpacing = CGFloatValueFrom(options[@"letterSpacing"]);
+  NSDictionary<NSAttributedStringKey,id> *const attributes = isnan(letterSpacing)
+  ? @{NSFontAttributeName: font}
+  : @{NSFontAttributeName: font, NSKernAttributeName: @(letterSpacing)};
+
+  NSTextContainer *textContainer = [[NSTextContainer alloc] initWithSize:maxSize];
+  textContainer.lineFragmentPadding = 0.0;
+  textContainer.lineBreakMode = NSLineBreakByClipping; // no maxlines support
+
+  NSLayoutManager *layoutManager = [NSLayoutManager new];
+  [layoutManager addTextContainer:textContainer];
+
+  NSTextStorage *textStorage = [[NSTextStorage alloc] initWithString:@" " attributes:attributes];
+  [textStorage addLayoutManager:layoutManager];
+
+  NSMutableArray<NSNumber *> *result = [[NSMutableArray alloc] initWithCapacity:texts.count];
+  const CGFloat epsilon = 0.001;
+
+  for (int ix = 0; ix < texts.count; ix++) {
+    NSString *text = texts[ix];
+
+    // If this element is `null` or another type, return zero
+    if (![text isKindOfClass:[NSString class]]) {
+      result[ix] = @0;
+      continue;
+    }
+
+    // If empty, return the minimum height of <Text> components
+    if (!text.length) {
+      result[ix] = @14;
+      continue;
+    }
+
+    // Reset the textStorage, the attrs will expand to its new length
+    NSRange range = NSMakeRange(0, textStorage.length);
+    [textStorage replaceCharactersInRange:range withString:text];
+    CGSize size = [layoutManager usedRectForTextContainer:textContainer].size;
+
+    const CGFloat height = MIN(RCTCeilPixelValue(size.height + epsilon), maxSize.height);
+    result[ix] = @(height);
+  }
+
+  return result;
+}
+
 /**
  * Resolve with an object with info about a font built with the parameters provided by
  * the user. Rejects if the parameters are falsy or the font could not be created.
