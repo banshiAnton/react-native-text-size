@@ -256,6 +256,81 @@ class RNTextSizeModule extends ReactContextBaseJavaModule {
         }
     }
 
+    @SuppressWarnings("unused")
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    public WritableArray flatHeightsSync(@Nullable final ReadableMap specs) {
+        final RNTextSizeConf conf = new RNTextSizeConf(specs, true);
+        if (conf == null) {
+            return null;
+        }
+
+        final ReadableArray texts = conf.getArray("text");
+        if (texts == null) {
+            return null;
+        }
+
+        final float density = getCurrentDensity();
+        final float width = conf.getWidth(density);
+        final boolean includeFontPadding = conf.includeFontPadding;
+        final int textBreakStrategy = conf.getTextBreakStrategy();
+
+        final WritableArray result = Arguments.createArray();
+
+        final SpannableStringBuilder sb = new SpannableStringBuilder(" ");
+        RNTextSizeSpannedText.spannedFromSpecsAndText(mReactContext, conf, sb);
+
+        final TextPaint textPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+        Layout layout;
+        try {
+
+            for (int ix = 0; ix < texts.size(); ix++) {
+
+                // If this element is `null` or another type, return zero
+                if (texts.getType(ix) != ReadableType.String) {
+                    result.pushInt(0);
+                    continue;
+                }
+
+                final String text = texts.getString(ix);
+
+                // If empty, return the minimum height of <Text> components
+                if (text.isEmpty()) {
+                    result.pushDouble(minimalHeight(density, includeFontPadding));
+                    continue;
+                }
+
+                // Reset the SB text, the attrs will expand to its full length
+                sb.replace(0, sb.length(), text);
+
+                if (Build.VERSION.SDK_INT >= 23) {
+                    layout = StaticLayout.Builder.obtain(sb, 0, sb.length(), textPaint, (int) width)
+                            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                            .setBreakStrategy(textBreakStrategy)
+                            .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NORMAL)
+                            .setIncludePad(includeFontPadding)
+                            .setLineSpacing(SPACING_ADDITION, SPACING_MULTIPLIER)
+                            .build();
+                } else {
+                    layout = new StaticLayout(
+                            sb,
+                            textPaint,
+                            (int) width,
+                            Layout.Alignment.ALIGN_NORMAL,
+                            SPACING_MULTIPLIER,
+                            SPACING_ADDITION,
+                            includeFontPadding
+                    );
+                }
+
+                result.pushDouble(layout.getHeight() / density);
+            }
+
+            return result;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /**
      * See https://material.io/design/typography/#type-scale
      */
